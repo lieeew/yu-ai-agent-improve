@@ -33,8 +33,8 @@ public class PgVectorVectorStoreConfig {
                 .maxDocumentBatchSize(10000)         // Optional: defaults to 10000
                 .build();
         // 加载文档
-        List<Document> documents = loveAppDocumentLoader.loadMarkdowns();
-        vectorStore.add(documents);
+//        List<Document> documents = loveAppDocumentLoader.loadMarkdowns();
+//        vectorStore.add(documents);
         return vectorStore;
     }
 }

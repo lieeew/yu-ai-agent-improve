@@ -29,6 +29,12 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ToolCallAgent extends ReActAgent {
 
+    /**
+     * 工具调用场景下单次思考的结构化结果
+     */
+    public record ToolThinkResult(String thinking, boolean shouldAct) implements ThinkStepOutcome {
+    }
+
     // 可用的工具
     private final ToolCallback[] availableTools;
 
@@ -40,6 +46,9 @@ public class ToolCallAgent extends ReActAgent {
 
     // 禁用 Spring AI 内置的工具调用机制，自己维护选项和消息上下文
     private final ChatOptions chatOptions;
+
+    /** 本次将执行 act 时对应的 think 原文（shouldAct==true 时在 think() 中赋值） */
+    private String thinkingBeforeAct;
 
     public ToolCallAgent(ToolCallback[] availableTools) {
         super();
@@ -53,11 +62,10 @@ public class ToolCallAgent extends ReActAgent {
 
     /**
      * 处理当前状态并决定下一步行动
-     *
-     * @return 是否需要执行行动
      */
     @Override
-    public boolean think() {
+    public ToolThinkResult think() {
+        this.thinkingBeforeAct = null;
         // 1、校验提示词，拼接用户提示词
         if (StrUtil.isNotBlank(getNextStepPrompt())) {
             UserMessage userMessage = new UserMessage(getNextStepPrompt());
@@ -69,7 +77,7 @@ public class ToolCallAgent extends ReActAgent {
         try {
             ChatResponse chatResponse = getChatClient().prompt(prompt)
                     .system(getSystemPrompt())
-                    .tools(availableTools)
+                    .toolCallbacks(availableTools)
                     .call()
                     .chatResponse();
             // 记录响应，用于等下 Act
@@ -91,15 +99,16 @@ public class ToolCallAgent extends ReActAgent {
             if (toolCallList.isEmpty()) {
                 // 只有不调用工具时，才需要手动记录助手消息
                 getMessageList().add(assistantMessage);
-                return false;
-            } else {
-                // 需要调用工具时，无需记录助手消息，因为调用工具时会自动记录
-                return true;
+                return new ToolThinkResult(result, false);
             }
+            // 需要调用工具时，无需记录助手消息，因为调用工具时会自动记录
+            this.thinkingBeforeAct = result;
+            return new ToolThinkResult(result, true);
         } catch (Exception e) {
             log.error(getName() + "的思考过程遇到了问题：" + e.getMessage());
-            getMessageList().add(new AssistantMessage("处理时遇到了错误：" + e.getMessage()));
-            return false;
+            String errThinking = "处理时遇到了错误：" + e.getMessage();
+            getMessageList().add(new AssistantMessage(errThinking));
+            return new ToolThinkResult(errThinking, false);
         }
     }
 
@@ -110,8 +119,9 @@ public class ToolCallAgent extends ReActAgent {
      */
     @Override
     public String act() {
+        String thinkBlock = YUAI_THINK_START + StrUtil.blankToDefault(thinkingBeforeAct, "（无文本）") + YUAI_THINK_END;
         if (!toolCallChatResponse.hasToolCalls()) {
-            return "没有工具需要调用";
+            return thinkBlock + "\n" + YUAI_ACT_START + "没有工具需要调用" + YUAI_ACT_END;
         }
         // 调用工具
         Prompt prompt = new Prompt(getMessageList(), this.chatOptions);
@@ -130,6 +140,6 @@ public class ToolCallAgent extends ReActAgent {
                 .map(response -> "工具 " + response.name() + " 返回的结果：" + response.responseData())
                 .collect(Collectors.joining("\n"));
         log.info(results);
-        return results;
+        return thinkBlock + "\n" + YUAI_ACT_START + results + YUAI_ACT_END;
     }
 }

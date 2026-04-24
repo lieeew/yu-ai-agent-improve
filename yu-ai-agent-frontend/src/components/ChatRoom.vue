@@ -11,8 +11,8 @@
             <AiAvatarFallback :type="aiType" />
           </div>
           <div class="message-bubble">
-            <div class="message-content">
-              {{ msg.content }}
+            <div class="message-content message-content--rich">
+              <AgentMessageContent :content="msg.content" />
               <span v-if="connectionStatus === 'connecting' && index === messages.length - 1" class="typing-indicator">▋</span>
             </div>
             <div class="message-time">{{ formatTime(msg.time) }}</div>
@@ -54,6 +54,7 @@
 
 <script setup>
 import { ref, reactive, onMounted, nextTick, watch, computed } from 'vue'
+import AgentMessageContent from './AgentMessageContent.vue'
 import AiAvatarFallback from './AiAvatarFallback.vue'
 
 const props = defineProps({
@@ -224,6 +225,10 @@ onMounted(() => {
   font-size: 16px;
   line-height: 1.5;
   white-space: pre-wrap;
+}
+
+.message-content--rich {
+  white-space: normal;
 }
 
 .message-time {
